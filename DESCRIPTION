@@ -1,0 +1,16 @@
+Package: noteR
+Type: Package
+Title: Take Notes Using RStudio Visual Markdown Editor 
+Version: 0.1.0
+Author: Emmanuel BATT [aut, cre]
+Maintainer: Emmanuel BATT <emmanuel.batt.cran@battfamily.fr>
+Description: Add features to RStudio Visual Editor so that is becomes (very) 
+             convenient for taking notes. 
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    rstudioapi(>= 0.14)
+Suggests:
+    shiny(>= 1.7.2),
+    knitr, rmarkdown
