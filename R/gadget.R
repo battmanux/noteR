@@ -99,6 +99,6 @@ server <- function(input, output, session) {
 }
 
 
-app <- shinyApp(ui, server )
+#app <- shinyApp(ui, server )
 
-shiny::runGadget(app, viewer = ifelse(exists("gViewer"), gViewer, options()$viewer))
+#shiny::runGadget(app, viewer = ifelse(exists("gViewer"), gViewer, options()$viewer))
