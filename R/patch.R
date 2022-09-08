@@ -8,11 +8,15 @@ knit_mermaid_554 <- function (options) {
     <meta charset=\"utf-8\">
   </head>
   <body>
-    <div class=\"mermaid\" style=\"text-align: center;\">
+    <div id=\"mermaid0\" class=\"mermaid\" style=\"text-align: center;\">
     <mmCode/>
     </div>
    <script src=\"https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js\"></script>
-   <script>mermaid.initialize({startOnLoad:true});
+   <script>
+   mermaid.parseError = function(err,hash){
+     document.getElementById('mermaid0').insertAdjacentHTML('beforeend', err.message.replaceAll('\\n','<br/>'));
+   };
+   mermaid.initialize({startOnLoad:true});
   </script>
   </body>
   </html>"
@@ -49,7 +53,6 @@ knit_mermaid_554 <- function (options) {
     )
   }
 }
-
 
 knit_dot_554 <- function (options) {
 
