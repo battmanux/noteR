@@ -1,0 +1,9 @@
+Name: NoteR pannel
+Description: Create qmd document using templates.
+Binding: startApp
+Interactive: true
+
+Name: Stop NoteR pannel
+Description: Close qmd document using templates.
+Binding: stopApp
+Interactive: true

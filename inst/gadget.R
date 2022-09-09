@@ -78,13 +78,13 @@ server <- function(input, output, session) {
       l_new_file <-   substr(x = gsub(pattern = "].*$", "", l_line),
                          start = lNew$start_column,
                          stop = 32)
-      
+
       output$search_bar <- renderUI({
         shiny::tags$ul(
           shiny::tags$li("[search]"),
         shiny::tags$li(
           shiny::actionLink(
-                            inputId = "new", 
+                            inputId = "new",
                             label = "create "),
           shiny::textInput(inputId = "new_file_name", label = NULL, value = l_new_file)
           )
@@ -97,7 +97,7 @@ server <- function(input, output, session) {
     }
     output$navbar <- renderText(l_ctx$path)
   })
-  
+
   observeEvent(input$new, {
     l_new_file <-  paste0(input$new_file_name, ".qmd")
     l_content <- readLines("~/saved_data/templates/default.qmd", warn = F)
@@ -109,6 +109,5 @@ server <- function(input, output, session) {
 }
 
 
-app <- shinyApp(ui, server )
 
-shiny::runGadget(app, viewer = ifelse(exists("gViewer"), gViewer, options()$viewer))
+shiny::runGadget(shinyApp(ui, server ), viewer = ifelse(exists("gViewer")==T, gViewer, options()$viewer))

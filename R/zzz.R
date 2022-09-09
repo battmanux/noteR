@@ -18,4 +18,8 @@
 
   knitr::knit_engines$set(`yaml`=knit_yaml_data)
 
+
+  gValues$gLastStartId<-""
+  gValues$gLastStartUrl<-""
+
 }
