@@ -57,7 +57,16 @@ stopApp <- function() {
       rstudioapi::jobRemove(gValues$gLastStartId)
     })
   }
+  gValues$gLastStartId <- ""
   gValues$gLastStartUrl <- ""
+}
+
+showApp <- function() {
+  if ( gValues$gLastStartUrl != "") {
+    options()$viewer(gValues$gLastStartUrl)
+  } else {
+    startApp()
+  }
 }
 
 startApp <- function() {
@@ -74,11 +83,12 @@ startApp <- function() {
       rstudioapi::jobRemove(gValues$gLastStartId)
     })
     gValues$gLastStartUrl <- ""
+    gValues$gLastStartId <- ""
   }
 
   path <- system.file("gadget.R", package="noteR")
   #path <- "inst/gadget.R"
-
+  #path <- "inst/test.R"
   gValues$gLastStartId <- rstudioapi::jobRunScript(path, importEnv = T)
 
   Sys.sleep(0.1)
@@ -92,6 +102,46 @@ startApp <- function() {
 
   w<-options()$viewer
   w(l_url)
+  gValues$gLastStartUrl <- l_url
+  rm(gViewer, envir = .GlobalEnv)
+
+}
+
+
+startAppDev <- function() {
+  tmpfile <- tempfile(fileext = ".url")
+
+  #dir.create(gsub(pattern = "/[^/]*$", replacement = "", x = tmpfile), recursive = T, showWarnings = F)
+
+  on.exit({unlink(tmpfile)})
+  .GlobalEnv$gViewer <- function (url, height = NULL) {
+    cat(url, file = tmpfile)
+  }
+  if ( gValues$gLastStartId != "" ) {
+    try({
+      rstudioapi::jobRemove(gValues$gLastStartId)
+    })
+    gValues$gLastStartUrl <- ""
+    gValues$gLastStartId <- ""
+  }
+
+  #path <- system.file("gadget.R", package="noteR")
+  path <- "~/Rstudio/noteR/inst/gadget.R"
+  #path <- "inst/test.R"
+  gValues$gLastStartId <- rstudioapi::jobRunScript(path, importEnv = T)
+
+  Sys.sleep(0.1)
+  for ( i in 1:10) {
+    if ( file.exists(tmpfile))
+      break
+    else
+      Sys.sleep(0.1)
+  }
+  l_url <- readLines(tmpfile, warn = F)
+
+  w<-options()$viewer
+  w(l_url)
+  rm(gViewer, envir = .GlobalEnv)
   gValues$gLastStartUrl <- l_url
 }
 

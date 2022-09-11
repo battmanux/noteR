@@ -1,102 +1,113 @@
 library(shiny)
 
 ui <- fluidPage(
-  htmlOutput(outputId = "navbar", inline = T),
-  htmlOutput(outputId = "search_bar", inline = T)
+  shiny::includeHTML("nav.html"),
+  htmlOutput(outputId = "content")
 )
 
-l_ctx <- NULL
 server <- function(input, output, session) {
 
-  gLast <- list(
-    Id="",
-    Path="",
-    Content="",
-    line=0,
-    column=0,
-    start_column=0)
+  gProjectFolder <- "/home/ebatt/Rstudio/notes/"
 
-  gMode <- "empty"
+  gState <- reactiveValues(
+    documentId = "",
+    documentType = "",
+    documentPath = "",
+    state = "idle",
+    selection = "",
+    ctx = 0
+  )
+
+  gState_ctx <- list()
 
   observe({
+    gState_ctx <<- rstudioapi::getSourceEditorContext()
     invalidateLater(500)
-    l_ctx <- rstudioapi::getSourceEditorContext()
+    if ( gState$documentId != gState_ctx$id  ) {
+      gState$ctx <- gState$ctx + 1
+    }
+  })
 
-    lNew <- list(
-      Id=l_ctx$id,
-      Path=l_ctx$path,
-      Content=paste(l_ctx$contents, collapse = "\n"),
-      line=0,
-      column=0,
-      start_column=gLast$start_column
-      )
+  observeEvent(gState$ctx, {
+    str(gState)
+    l_ctx <- gState_ctx
+    if ( gState$documentId != l_ctx$id ) {
+      gState$documentId <- l_ctx$id
+      gState$documentPath <- l_ctx$path
+      gState$documentType <- tolower(gsub(pattern = "^.*\\.([a-zA-Z]+)$", "\\1", x=l_ctx$path))
+      gState$selection <- rstudioapi::selectionGet(id=l_ctx$id)$value
 
-    if ( length(l_ctx$selection) > 0 ) {
-      lNew$line    <- l_ctx$selection[[1]]$range$start[["row"]]
-      lNew$column  <- l_ctx$selection[[1]]$range$start[["column"]]
-      l_line       <- l_ctx$contents[[ lNew$line ]]
-      l_prev_char <- substr(l_line,
-                            start = lNew$column-1,
-                            stop =  lNew$column-1)
+      if ( length(l_ctx$contents) > 0 ) {
+        gState$documentContent <- l_ctx$contents
+      } else {
+        rstudioapi::documentSave(l_ctx$id)
+        gState$documentContent <-readLines( gState$documentPath, warn = F)
+      }
     } else {
-      lNew$line   <- 0
-      lNew$column <- 0
-      l_line <- ""
-      l_prev_char <- ""
+      if ( length(l_ctx$selection) > 0 ) {
+        l_new_sel <- l_ctx$selection[[1]]$text
+      } else {
+        l_new_sel <- rstudioapi::selectionGet(id=l_ctx$id)$value
+      }
+
+      if ( gState$selection != l_new_sel ) {
+        gState$selection <- l_new_sel
+      }
     }
+  })
 
-    if ( all( as.character(gLast) == as.character(lNew) ) ||
-         length(l_ctx$contents) == 0 )
-      return()
+  observeEvent(gState$selection, {
+    updateTextInput(inputId = "search", value = gState$selection )
+  })
 
-    lNewMode<- gMode
-
-    ## decide in what mode we are
-    if ( gMode == "empty" &&
-         l_prev_char == "["
-    ) {
-      lNew$start_column <- lNew$column
-      lNewMode<- "search"
-    }
-
-    if ( gMode == "search" &&
-         gLast$line != lNew$line ||
-                lNew$column < lNew$start_column  ) {
-      lNew$start_column <- 0
-      lNewMode <- "empty"
-    }
-
-    # str(lNew)
-    # str(gLast)
-    # str(list(gMode=gMode, lNewMode=lNewMode))
-
-    gLast <<- lNew
-    gMode <<- lNewMode
-
-    ## act as per the current mode
-    if ( lNewMode == 'search' ) {
-      l_new_file <-   substr(x = gsub(pattern = "].*$", "", l_line),
-                         start = lNew$start_column,
-                         stop = 32)
-
-      output$search_bar <- renderUI({
-        shiny::tags$ul(
-          shiny::tags$li("[search]"),
-        shiny::tags$li(
-          shiny::actionLink(
-                            inputId = "new",
-                            label = "create "),
-          shiny::textInput(inputId = "new_file_name", label = NULL, value = l_new_file)
+  observeEvent(gState$documentId, {
+    ## Parse doc
+    if (gState$documentType == "qmd" ) {
+      output$content <- renderUI({
+        div(
+          tags$h2("title"),
+          tags$ul(
+            tags$li("toto")
           )
         )
       })
-    }
+    } else {
+      output$content <- renderUI({
+        div(
+          tags$h2("other doc"),
+          tags$ul(
+            tags$li("some doc")
+          )
+        )
+      })
 
-    if ( lNewMode == "empty" ) {
-      output$search_bar <- renderUI(shiny::div())
     }
-    output$navbar <- renderText(l_ctx$path)
   })
+
+  observeEvent(input$search, {
+
+    if (!is.null(input$search) && nchar(input$search) > 2) {
+      suppressWarnings({
+        l_res <- system(command = paste0("grep -R -i -I -n -H '", input$search, "' ",gProjectFolder," ") ,intern = T, ignore.stderr = T, timeout = 100)
+      })
+
+      output$content <- renderUI({
+        tags$button(type="button", class="list-group-item",
+               lapply(strsplit(l_res[1:min(10, length(l_res))], ":"), function(x) {
+                 l_elem <- tags$a(class="list-group-item", target=x[[1]],
+                     tags$h4(basename(x[[1]]), ' ', class="list-group-item-heading"),
+                     tags$p(paste(x[3:length(x)], collapse = ":"), class="list-group-item-text" )
+                   )
+                 return(l_elem)
+              } )
+        )
+      } )
+    }
+  } )
+
+  ## TODO: reactive value : document id
+  ## on link creation, if visual, inset {create link to} + save + replace + reload
+  # rstudioapi::selectionSet("fdf", id = "25EDE74F")
 
   observeEvent(input$new, {
     l_new_file <-  paste0(input$new_file_name, ".qmd")
@@ -108,6 +119,10 @@ server <- function(input, output, session) {
   })
 }
 
+if ( exists("gViewer")==T) {
+  l_viewer <- gViewer
+} else {
+  l_viewer <- options()$viewer
+}
 
-
-shiny::runGadget(shinyApp(ui, server ), viewer = ifelse(exists("gViewer")==T, gViewer, options()$viewer))
+shiny::runGadget(shinyApp(ui, server ), viewer = l_viewer )
