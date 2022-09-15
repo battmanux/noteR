@@ -10,7 +10,7 @@ ui <- fluidPage(
 searchString <- function(input, output, gState) {
   {
     if ( input$search == "" && gState$documentType == "qmd" ) {
-      output$content <- renderUI(docParameters(gState$documentPath))
+      output$content <- renderUI(docParameters(gState$documentPath, gState))
       return()
     }
 
@@ -56,8 +56,11 @@ searchString <- function(input, output, gState) {
                                    l_elem <- tags$a(class="list-group-item", target=x[,path],
                                                     onClick=paste0("Shiny.setInputValue('openfile', '",x[,path],"', {priority : 'event'})"),
                                                     tags$h4(x[,title], ' ', class="list-group-item-heading"),
+                                                    tags$a(style="float:right;",
+                                                           onClick=paste0("Shiny.setInputValue('link_to_file', '",x[,path],"', {priority : 'event'})"),
+                                                           "link"),
                                                     tags$small(tags$p(x[,path])),
-                                                    tags$p(x[,match], class="list-group-item-text" )
+                                                    tags$p(x[,match], class="list-group-item-text")
                                    )
                                    return(l_elem)
                                  } )
@@ -67,6 +70,7 @@ searchString <- function(input, output, gState) {
         }
         l_create <- tags$button(type="button", class="list-group-item",
                                 tags$a(class="list-group-item", target=input$search,
+                                       onClick=paste0("Shiny.setInputValue('new_file_name', '", input$search,"', {priority : 'event'})"),
                                        tags$h4(paste0("Create '", input$search, "'"),  class="list-group-item-heading"),
                                        tags$p(paste("Use default template"), class="list-group-item-text" )
                                 )
@@ -87,6 +91,79 @@ getTitleFromQmd <-function(x) {
   l_title <- gsub("title: *", "", l_first_match[[1]])
 
   return(l_title)
+}
+
+docParameters <- function(path, gState) {
+  l_params <- getParametersFromQmd(path)
+  l_qmd <- l_params$qmd
+  l_params$qmd <- NULL
+  if (!is.null(l_params$logo)) {
+    l_logo <- tags$img(src=l_params$logo, style='max-height:30px;margin-left: 10px;')
+  } else {
+    l_logo <- icon("file", style='max-height:30px;margin-left: 10px;')
+  }
+  l_backlinks <-  system(command = paste0("grep -R -i -l '](",normalizePath(path), ")' ",gState$projectFolder,"/* | grep 'qmd$' ") ,intern = T, ignore.stderr = T, timeout = 100)
+  return(
+    div(
+      tags$h2(l_logo , l_qmd$title),
+      tags$table(class="table",
+                 lapply(names(l_params), function(n) {
+                   tags$tr(tags$td(n), tags$td( l_params[[n]] ))
+                 }
+                 ) ),
+      shiny::tags$p("backlinks"),
+      shiny::tags$ul(
+        lapply(l_backlinks, function(x) {
+          shiny::tags$li(shiny::tags$a(href="#", onClick=paste0("Shiny.setInputValue('openfile', '",x,"', {priority : 'event'})"),
+                                       getTitleFromQmd(x)))
+        })
+        ),
+      shiny::HTML('
+        <style>
+            #drop_zone {
+              border: 1px dash grey;
+              width:  200px;
+              height: 100px;
+              margin: 10px;
+            }
+        </style>
+        <div id="drop_zone" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);">
+          <p>Drag one or more files to this <i>drop zone</i>.</p>
+        </div>
+        <script>
+function dropHandler(ev) {
+  console.log(\'File(s) dropped\');
+
+  // Prevent default behavior (Prevent file from being opened)
+  ev.preventDefault();
+
+  if (ev.dataTransfer.items) {
+    // Use DataTransferItemList interface to access the file(s)
+    [...ev.dataTransfer.items].forEach((item, i) => {
+      // If dropped items aren\'t files, reject them
+                    if (item.kind === \'file\') {
+                      const file = item.getAsFile();
+                      console.log(`… file[${i}].name = ${file.name}`);
+                    }
+  });
+} else {
+  // Use DataTransfer interface to access the file(s)
+  [...ev.dataTransfer.files].forEach((file, i) => {
+    console.log(`… file[${i}].name = ${file.name}`);
+  });
+}
+}
+
+function dragOverHandler(ev) {
+  console.log(\'File(s) in drop zone\');
+
+  // Prevent default behavior (Prevent file from being opened)
+  ev.preventDefault();
+}
+
+        </script>')
+    )
+  )
 }
 
 getParametersFromQmd <-function(x) {
@@ -141,124 +218,27 @@ server <- function(input, output, session) {
     ctx = 0
   )
 
-  gState_ctx <- list(id="")
+  observeEvent(input$show_prm,{
 
-  observeEvent(input$show_prm, {
-    try({
-      gState_ctx <<- rstudioapi::getSourceEditorContext()
-      #invalidateLater(500)
-      if ( gState$documentId != gState_ctx$id ||
-           gState$selection !=  rstudioapi::selectionGet(id=gState_ctx$id)$value) {
-          gState$ctx <- gState$ctx + 1
-      }
-    })
-  })
+    l_ctx <- rstudioapi::getSourceEditorContext()
+    gState$documentId <- l_ctx$id
+    gState$documentPath <- l_ctx$path
+    gState$documentType <- tolower(gsub(pattern = "^.*\\.([a-zA-Z]+)$", "\\1", x=l_ctx$path))
 
+    updateTextInput(inputId = "search", value = "")
 
-  observeEvent(gState$ctx,{
-
-    l_ctx <- gState_ctx
-    if ( gState$documentId != l_ctx$id ) {
-      gState$documentId <- l_ctx$id
-      gState$documentPath <- l_ctx$path
-      gState$documentType <- tolower(gsub(pattern = "^.*\\.([a-zA-Z]+)$", "\\1", x=l_ctx$path))
-      gState$selection <- ""
-
-      # if ( length(l_ctx$contents) > 0 ) {
-      #   gState$documentContent <- l_ctx$contents
-      # } else {
-      #   rstudioapi::documentSave(l_ctx$id)
-      #   gState$documentContent <-readLines( gState$documentPath, warn = F)
-      # }
-
-    } else {
-      if ( length(l_ctx$selection) > 0 ) {
-        l_new_sel <- l_ctx$selection[[1]]$text
-      } else {
-        l_new_sel <- rstudioapi::selectionGet(id=l_ctx$id)$value
-      }
-
-      if ( gState$selection != l_new_sel ) {
-        gState$selection <- l_new_sel
-      }
-    }
-  })
-
-  observeEvent(gState$documentPath, {
-    ## Parse doc
     if (gState$documentType == "qmd" ) {
-      output$content <- renderUI(docParameters(gState$documentPath))
+      output$content <- renderUI(docParameters(gState$documentPath, gState))
     } else {
       output$content <- renderUI(list())
     }
   })
 
-  docParameters <- function(path) {
-    l_params <- getParametersFromQmd(path)
-    l_qmd <- l_params$qmd
-    l_params$qmd <- NULL
-    if (!is.null(l_params$logo)) {
-      l_logo <- tags$img(src=l_params$logo, style='max-height:30px;margin-left: 10px;')
-    } else {
-      l_logo <- icon("file", style='max-height:30px;margin-left: 10px;')
-    }
-    return(
-      div(
-        tags$h2(l_logo , l_qmd$title),
-        tags$table(class="table",
-          lapply(names(l_params), function(n) {
-            tags$tr(tags$td(n), tags$td( l_params[[n]] ))
-          }
-        ) ),
-        shiny::HTML('
-        <style>
-            #drop_zone {
-              border: 5px solid blue;
-              width:  200px;
-              height: 100px;
-            }
-        </style>
-        <div id="drop_zone" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);">
-          <p>Drag one or more files to this <i>drop zone</i>.</p>
-        </div>
-        <script>
-function dropHandler(ev) {
-  console.log(\'File(s) dropped\');
-
-  // Prevent default behavior (Prevent file from being opened)
-  ev.preventDefault();
-
-  if (ev.dataTransfer.items) {
-    // Use DataTransferItemList interface to access the file(s)
-    [...ev.dataTransfer.items].forEach((item, i) => {
-      // If dropped items aren\'t files, reject them
-                    if (item.kind === \'file\') {
-                      const file = item.getAsFile();
-                      console.log(`… file[${i}].name = ${file.name}`);
-                    }
-  });
-} else {
-  // Use DataTransfer interface to access the file(s)
-  [...ev.dataTransfer.files].forEach((file, i) => {
-    console.log(`… file[${i}].name = ${file.name}`);
-  });
-}
-}
-
-function dragOverHandler(ev) {
-  console.log(\'File(s) in drop zone\');
-
-  // Prevent default behavior (Prevent file from being opened)
-  ev.preventDefault();
-}
-
-        </script>')
-      )
-    )
-  }
 
   observeEvent(input$search, {
-    searchString(input, output, gState)
+    if ( nchar(input$search) >= 3){
+      searchString(input, output, gState)
+    }
   } )
 
   observeEvent(input$import_search, {
@@ -271,19 +251,54 @@ function dragOverHandler(ev) {
 
   observeEvent(input$openfile, {
     if ( file.exists(input$openfile)) {
-      rstudioapi::navigateToFile(input$openfile)
+      gState$documentType <- gsub(pattern = "^.*\\.([a-zA-Z0-9]+)$", "\\1", input$openfile)
       gState$documentPath <- input$openfile
+      rstudioapi::navigateToFile(input$openfile)
+
+      updateTextInput(inputId = "search", value = "")
+
+      if (gState$documentType == "qmd" ) {
+        output$content <- renderUI(docParameters(gState$documentPath, gState))
+      } else {
+        output$content <- renderUI(list())
+      }
     }
   })
 
-  observeEvent(input$new, {
-    l_new_file <-  paste0(input$new_file_name, ".qmd")
-    l_content <- readLines("~/saved_data/templates/default.qmd", warn = F)
-    cat(file = l_new_file, sep = "\n",
-        gsub(pattern = "\\{title\\}", replacement = input$new_file_name, x = l_content)
-    )
-    rstudioapi::navigateToFile(l_new_file)
+  observeEvent(input$new_file_name, {
+    l_name <- gsub(pattern = "[^a-zA-Z0-9]", replacement = "_", x = input$new_file_name)
+    l_name <-  paste0(l_name, ".qmd")
+    l_path <- paste0(gState$projectFolder,"/",l_name)
+    l_content <- c(
+      "---",
+      "title: {title}",
+      "format: html",
+      "editor: visual",
+      "---",
+      "",
+      "\`\`\`{yaml}",
+      "Creation time: {now}",
+      "\`\`\`",
+      "",
+      "## {title}",
+      "")
+
+    l_content <- gsub(pattern = "\\{title\\}", replacement = input$new_file_name, x = l_content)
+    l_content <- gsub(pattern = "\\{now\\}", replacement = format(Sys.time()), x = l_content)
+
+    cat(file = l_path, sep = "\n", l_content)
+
+    rstudioapi::selectionSet(value = paste0("[",input$new_file_name,"](",l_path,")"))
+    output$content <- renderUI(docParameters(l_path, gState))
+
+    rstudioapi::navigateToFile(l_path)
+    updateTextInput(inputId = "search", value = "")
   })
+
+  observeEvent(input$link_to_file, {
+    rstudioapi::selectionSet(value = paste0("[",rstudioapi::selectionGet(),"](",input$link_to_file,")"))
+  })
+
 }
 
 if ( exists("gViewer")==T) {
