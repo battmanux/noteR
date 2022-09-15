@@ -20,6 +20,7 @@ server <- function(input, output, session) {
     documentPath = "",
     state = "idle",
     selection = "",
+    gotofile = "",
     ctx = 0
   )
 
@@ -31,13 +32,17 @@ server <- function(input, output, session) {
       invalidateLater(500)
       if ( gState$documentId != gState_ctx$id ||
            gState$selection !=  rstudioapi::selectionGet(id=gState_ctx$id)$value) {
-        gState$ctx <- gState$ctx + 1
+          gState$ctx <- gState$ctx + 1
       }
     })
   })
 
   observeEvent(gState$ctx, {
     # str(gState)
+    if ( nchar(gState$gotofile) > 0 && gState$gotofile != gState$documentPath ) {
+      rstudioapi::navigateToFile(gState$gotofile)
+      return()
+    }
     l_ctx <- gState_ctx
     if ( gState$documentId != l_ctx$id ) {
       gState$documentId <- l_ctx$id
@@ -210,9 +215,9 @@ function dragOverHandler(ev) {
   # rstudioapi::selectionSet("fdf", id = "25EDE74F")
 
   observeEvent(input$openfile, {
-    rstudioapi::navigateToFile(input$openfile)
+    gState$gotofile <- input$openfile
   })
-  
+    
   observeEvent(input$new, {
     l_new_file <-  paste0(input$new_file_name, ".qmd")
     l_content <- readLines("~/saved_data/templates/default.qmd", warn = F)
