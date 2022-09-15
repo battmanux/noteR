@@ -1,4 +1,6 @@
 library(shiny)
+library(data.table)
+library(stringdist)
 
 ui <- fluidPage(
   shiny::includeHTML("nav.html"),
@@ -12,7 +14,6 @@ server <- function(input, output, session) {
     gProjectFolder <- getwd()
   }
   
-
   gState <- reactiveValues(
     documentId = "",
     documentType = "",
@@ -25,12 +26,14 @@ server <- function(input, output, session) {
   gState_ctx <- list()
 
   observe({
-    gState_ctx <<- rstudioapi::getSourceEditorContext()
-    invalidateLater(500)
-    if ( gState$documentId != gState_ctx$id ||
-         gState$selection !=  rstudioapi::selectionGet(id=gState_ctx$id)$value) {
-      gState$ctx <- gState$ctx + 1
-    }
+    try({
+      gState_ctx <<- rstudioapi::getSourceEditorContext()
+      invalidateLater(500)
+      if ( gState$documentId != gState_ctx$id ||
+           gState$selection !=  rstudioapi::selectionGet(id=gState_ctx$id)$value) {
+        gState$ctx <- gState$ctx + 1
+      }
+    })
   })
 
   observeEvent(gState$ctx, {
@@ -141,14 +144,49 @@ function dragOverHandler(ev) {
         l_res <- system(command = paste0("grep -R -i -I -n -H '", input$search, "' ",gProjectFolder," ") ,intern = T, ignore.stderr = T, timeout = 100)
       })
 
+      l_list <- strsplit(l_res, ":")
+      l_data <- data.table(
+        path= unlist(lapply(l_list, function(x) x[[1]])),
+        line= unlist(lapply(l_list, function(x) x[[2]])),
+        match= unlist(lapply(l_list, function(x) paste(collapse = ":", x[3:length(x)]) ) )
+        )
+      
+      l_data$file_type <- gsub(pattern = "^.*\\.([a-zA-Z]+)$", replacement = "\\1", x =l_data$path )
+
+      getTitleFromQmd <-function(x) {
+        l_content <- readLines(x)
+        l_first_match <- grep(pattern = "^title: .*$", value = T, x = l_content)
+        
+        if (length(l_first_match) == 0)
+          return( gsub(pattern = "^(.*)\\.[a-zA-Z]+$", replacement = "\\1", x = basename(x) ))
+        
+        l_title <- gsub("title: *", "", l_first_match[[1]])
+        
+        return(l_title)
+      }
+      
+      getTitleFromQmdv <- Vectorize(getTitleFromQmd)
+      
+      l_data[,title:=getTitleFromQmdv(path)]
+      l_data[,filename:= gsub(pattern = "^(.*)\\.[a-zA-Z]+$", replacement = "\\1", x = basename(path) )]
+      
+      l_data[,order:=0]
+      l_data[,order:=order+(stringdist::stringdist(title, input$search)/nchar(title)) ]
+      l_data[file_type=="qmd",order:=order-5]
+      
+      setkeyv(l_data, "order")
+      
       output$content <- renderUI({
 
-        if (length(l_res) > 0) {
+        if (nrow(l_data) > 0) {
           l_found <- tags$button(type="button", class="list-group-item",
-                                 lapply(strsplit(l_res[1:min(10, length(l_res))], ":"), function(x) {
-                                   l_elem <- tags$a(class="list-group-item", target=x[[1]],
-                                                    tags$h4(basename(x[[1]]), ' ', class="list-group-item-heading"),
-                                                    tags$p(paste(x[3:length(x)], collapse = ":"), class="list-group-item-text" )
+                                 lapply(seq_len(nrow(l_data)), function(i) {
+                                  x <-  l_data[i,]
+                                   l_elem <- tags$a(class="list-group-item", target=x[,path], 
+                                                    onClick=paste0("Shiny.setInputValue('openfile', '",x[,path],"')"), 
+                                                    tags$h4(x[,title], ' ', class="list-group-item-heading"),
+                                                    tags$small(tags$p(x[,path])),
+                                                    tags$p(x[,match], class="list-group-item-text" )
                                    )
                                    return(l_elem)
                                  } )
@@ -171,6 +209,10 @@ function dragOverHandler(ev) {
   ## on link creation, if visual, inset {create link to} + save + replace + reload
   # rstudioapi::selectionSet("fdf", id = "25EDE74F")
 
+  observeEvent(input$openfile, {
+    rstudioapi::navigateToFile(input$openfile)
+  })
+  
   observeEvent(input$new, {
     l_new_file <-  paste0(input$new_file_name, ".qmd")
     l_content <- readLines("~/saved_data/templates/default.qmd", warn = F)
