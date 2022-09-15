@@ -7,7 +7,11 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
 
-  gProjectFolder <- "/home/ebatt/Rstudio/notes/"
+  gProjectFolder <- rstudioapi::getActiveProject()
+  if ( gProjectFolder == "" ) {
+    gProjectFolder <- getwd()
+  }
+  
 
   gState <- reactiveValues(
     documentId = "",
