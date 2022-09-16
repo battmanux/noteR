@@ -10,6 +10,11 @@ ui <- fluidPage(
 searchString <- function(input, output, gState) {
   {
     if ( input$search == "" && gState$documentType == "qmd" ) {
+      l_node <- docToLink(gState)
+      
+      removeUI(selector = "#current_document_title > *", immediate = T, session = session)
+      insertUI(selector = "#current_document_title", 
+               ui = shiny::HTML(l_node), session = session )
       output$content <- renderUI(docParameters(gState$documentPath, gState))
       return()
     }
@@ -53,12 +58,16 @@ searchString <- function(input, output, gState) {
           l_found <- tags$button(type="button", class="list-group-item",
                                  lapply(seq_len(nrow(l_data)), function(i) {
                                    x <-  l_data[i,]
-                                   l_elem <- tags$a(class="list-group-item", target=x[,path],
-                                                    onClick=paste0("Shiny.setInputValue('openfile', '",x[,path],"', {priority : 'event'})"),
-                                                    tags$h4(x[,title], ' ', class="list-group-item-heading"),
-                                                    tags$a(style="float:right;",
-                                                           onClick=paste0("Shiny.setInputValue('link_to_file', '",x[,path],"', {priority : 'event'})"),
-                                                           "link"),
+                                   l_elem <- tags$a(class="list-group-item", 
+                                                    tags$h4(x[,title], class="list-group-item-heading"),
+                                                    tags$span(class="glyphicon  glyphicon-open",
+                                                              style="float:right;",
+                                                              onClick=paste0("Shiny.setInputValue('openfile', '",x[,path],"', {priority : 'event'})"),
+                                                              `aria-hidden`="true"),
+                                                    tags$span(class="glyphicon  glyphicon-link",
+                                                              style="float:right;",
+                                                              onClick=paste0("Shiny.setInputValue('link_to_file', '",x[,path],"', {priority : 'event'})"),
+                                                              `aria-hidden`="true"),
                                                     tags$small(tags$p(x[,path])),
                                                     tags$p(x[,match], class="list-group-item-text")
                                    )
@@ -93,22 +102,35 @@ getTitleFromQmd <-function(x) {
   return(l_title)
 }
 
+cleanMediaPath <- function(gState, l_path) {
+  
+  l_relative_path <- gsub(".qmd", "/", gsub(gState$projectFolder,"", normalizePath(gState$documentPath) ) )
+  
+  if (is.null(l_path)) {
+    l_path <- "" 
+  } else if ( ! grepl("^https?\\:\\/\\/", l_path)) {
+    l_path <- paste0("data", l_relative_path,  l_path)
+  }
+  l_path
+}
+
 docParameters <- function(path, gState) {
   l_params <- getParametersFromQmd(path)
   l_qmd <- l_params$qmd
   l_params$qmd <- NULL
-  if (!is.null(l_params$logo)) {
-    l_logo <- tags$img(src=l_params$logo, style='max-height:30px;margin-left: 10px;')
+
+  if (!is.null(l_params$Logo) ) {
+    l_logo <- tags$img(src=cleanMediaPath(gState, l_params$Logo), style='max-height:30px;margin-left: 10px;')
   } else {
     l_logo <- icon("file", style='max-height:30px;margin-left: 10px;')
   }
-  l_backlinks <-  system(command = paste0("grep -R -i -l '](",normalizePath(path), ")' ",gState$projectFolder,"/* | grep 'qmd$' ") ,intern = T, ignore.stderr = T, timeout = 100)
+  l_backlinks <- system(command = paste0("grep -R -i -l '](",normalizePath(path), ")' ",gState$projectFolder,"/* | grep 'qmd$' ") ,intern = T, ignore.stderr = T, timeout = 100)
   return(
     div(
       tags$h2(l_logo , l_qmd$title),
       tags$table(class="table",
                  lapply(names(l_params), function(n) {
-                   tags$tr(tags$td(n), tags$td( l_params[[n]] ))
+                   tags$tr(tags$td(n), tags$td( lapply(l_params[[n]],shiny::tags$span) ))
                  }
                  ) ),
       shiny::tags$p("backlinks"),
@@ -199,6 +221,27 @@ getParametersFromQmd <-function(x) {
 
 getTitleFromQmdv <- Vectorize(getTitleFromQmd)
 
+
+docToLink <- function(gState, l_param = NULL) {
+  
+  if ( is.null(l_param) ) {
+    l_param <- getParametersFromQmd(gState$documentPath)
+  }
+  l_node <- '
+      <a href="#" class="{class}"><img class="img-responsive img-rounded"
+      style="max-height: 20px; display: inline-block; "
+      src="{logo}"> {title}</a>'
+  
+  l_clean_Logo <- cleanMediaPath(gState, l_param$Logo)
+  
+  if (is.null(l_param$Name)) l_param$Name <- getTitleFromQmd(gState$documentPath)
+  
+  l_node  <- gsub(pattern = "\\{title\\}", replacement = l_param$Name, l_node)
+  l_node  <- gsub(pattern = "\\{logo\\}", replacement =l_clean_Logo, l_node)
+  l_node  <- gsub(pattern = "\\{class\\}", replacement = "", l_node)
+  l_node
+}
+
 server <- function(input, output, session) {
 
   gProjectFolder <- rstudioapi::getActiveProject()
@@ -207,6 +250,9 @@ server <- function(input, output, session) {
   }
   cat("Folder: ", gProjectFolder, "\n")
 
+  # Images in shiny app shall we relative to project path
+  shiny::addResourcePath(prefix = "/data", directoryPath = gProjectFolder)
+  
   gState <- reactiveValues(
     projectFolder = gProjectFolder,
     documentId = "",
@@ -215,10 +261,16 @@ server <- function(input, output, session) {
     state = "idle",
     selection = "",
     gotofile = "",
+    documentTitle = "---",
     ctx = 0
   )
-
-  observeEvent(input$show_prm,{
+  
+  observe({
+    invalidateLater(1000)
+    insertUI(selector = "#nowhere", ui = list())
+  })
+  
+  observeEvent(input$refresh_page,{
 
     l_ctx <- rstudioapi::getSourceEditorContext()
     gState$documentId <- l_ctx$id
@@ -229,6 +281,13 @@ server <- function(input, output, session) {
 
     if (gState$documentType == "qmd" ) {
       output$content <- renderUI(docParameters(gState$documentPath, gState))
+      
+      l_node <- docToLink(gState)
+      
+      removeUI(selector = "#current_document_title > *", immediate = T, session = session)
+      insertUI(selector = "#current_document_title", 
+               ui = shiny::HTML(l_node), session = session )
+
     } else {
       output$content <- renderUI(list())
     }
@@ -258,6 +317,12 @@ server <- function(input, output, session) {
       updateTextInput(inputId = "search", value = "")
 
       if (gState$documentType == "qmd" ) {
+        l_node <- docToLink(gState)
+        
+        removeUI(selector = "#current_document_title > *", immediate = T, session = session)
+        insertUI(selector = "#current_document_title", 
+                 ui = shiny::HTML(l_node), session = session )
+        
         output$content <- renderUI(docParameters(gState$documentPath, gState))
       } else {
         output$content <- renderUI(list())
@@ -296,7 +361,12 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$link_to_file, {
-    rstudioapi::selectionSet(value = paste0("[",rstudioapi::selectionGet(),"](",input$link_to_file,")"))
+    l_link <-  paste0("[",rstudioapi::selectionGet(),"](",input$link_to_file,")")
+    # l_brocken_link <- gsub("\\[", "\\\\[", l_link)
+    # l_brocken_link <- gsub("\\]", "\\\\]", l_brocken_link)
+    rstudioapi::selectionSet(value = l_link )
+    # rstudioapi::documentSave()
+    # l_path <- rstudioapi::getSourceEditorContext()$path
   })
 
 }
