@@ -2,11 +2,14 @@
  <nav class="navbar navbar-inverse navbar-static-top">
   <div class="container-fluid">
     <div class="navbar-header">
-      <a class="navbar-brand" href="#">iD Groupe SEB</a>
+      <a class="navbar-brand" href="#">
+        <button  id="refresh_page" class="btn btn-default action-button shiny-bound-input" type="button">
+          <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+        </button> iD Groupe SEB</a>
     </div>
     <ul class="nav navbar-nav">
-      <li><a href="#" id="show_prm" class="action-button shiny-bound-input">📘 PRM</a></li>
-        <li class="dropdown">
+      <li class="hidden-xs"><a href="#" id="show_prm" class="action-button shiny-bound-input">📘 PRM</a></li>
+      <li class="hidden-xs dropdown">
           <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">🏢 Enterprises</a>
           <ul class="dropdown-menu">
             <li><a href="#" id="show_contact" class="action-button shiny-bound-input">Contacts</a></li>
@@ -14,12 +17,9 @@
             <li><a href="#" id="show_salons" class="action-button shiny-bound-input">Salons</a></li>
           </ul>
         </li>
-      </li>
-      <li class="active"><a href="#"><img class="img-responsive img-rounded"
-                   style="max-height: 20px; max-width: 20px; display: inline-block; "
-                   src="https://media-exp1.licdn.com/dms/image/C4D0BAQGimpXQ06lp6w/company-logo_200_200/0/1615458287044?e=2147483647&v=beta&t=bwKrPXqZY_N8sgnHOT7vQH9yfRcJ0d5oITZ--sVOsOs"> FlyMenu</a></li>
+      <li class="active" id="current_document_title"></li>
     </ul>
-    <ul class="nav navbar-nav navbar-right">
+    <ul class="nav navbar-nav navbar-right hidden-xs">
       <li><a href="#"><span class="glyphicon glyphicon-user"></span> Emmanuel</a></li>
     </ul>
     <div class="navbar-form navbar-right">
